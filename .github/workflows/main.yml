@@ -1,0 +1,226 @@
+# This is a basic workflow to help you get started with Actions
+
+name: DevSecOps
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "master" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  
+permissions: write-all
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  Build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: chekout code
+        uses: actions/checkout@v3 
+        
+  ## Trufflehog secret scan        
+  secret_scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    
+    steps:
+#       - name: Checkout
+#         uses: actions/checkout@v2
+#         with:
+#           fetch-depth: 0 # fetch all history so multiple commits can be scanned
+#       - name: GitGuardian scan
+#         uses: GitGuardian/ggshield-action@master
+#         env:
+#           GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+#           GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+#           GITHUB_PULL_BASE_SHA:  ${{ github.event.pull_request.base.sha }}
+#           GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+#           GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+          
+#       - name: chekout code
+#         uses: actions/checkout@v3
+        
+#       - name: Check for secrets
+#         id: checks
+#         uses: maddygoround/secretduty@v1.3
+#       - name: Get results of scan
+#         run: echo "Scan Results - ${{ steps.checks.outputs.result }}"
+        
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+      - name: trufflehog-actions-scan
+        uses: edplato/trufflehog-actions-scan@master
+        with:
+          scanArguments: " "
+        continue-on-error: true
+ ##SBOM 
+  SBOM-scan:
+    name: SBOM scan
+    runs-on: ubuntu-latest
+    steps:
+       - uses: php-actions/composer@v6
+         with:
+          interaction: no
+          args: --profile --ignore-platform-reqs
+       - uses: actions/checkout@v3
+       - uses: CycloneDX/gh-php-composer-generate-sbom@v1
+    continue-on-error: true   
+       
+        
+        
+ ## Dependecy scan
+  dependency-scan:
+    name: Dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: 'Dependency Review'
+        uses: actions/dependency-review-action@v2
+        continue-on-error: true
+
+
+#       - uses: actions/cache@v2
+#         id: cache-db
+#         with:
+#           path: ~/.symfony/cache
+#           key: db
+#       - uses: symfonycorp/security-checker-action@v3
+#         with:
+#           disable-exit-code: 1
+# #           lock: Sample-php-app/composer.lock
+#         id: security-check
+#       - name: Display the vulnerabilities as JSON
+#         run: echo ${{ steps.security-check.outputs.vulns }}
+#         continue-on-error: true
+          
+  
+  ## PHP SAST SCAN      
+  sast_scan:
+    name: PHP SAST scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # for checkout to fetch code
+      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@aa1fe473f9c687b6fb896056d771232c0bc41161
+        with:
+          coverage: none
+          tools: phpmd
+
+      - name: Run PHPMD
+        run: phpmd . sarif codesize --reportfile phpmd-results.sarif
+        continue-on-error: true
+
+      - name: Upload analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: phpmd-results.sarif
+          wait-for-processing: true    
+        
+  ## ZAP DAST SCAN      
+#   ZAP_scan:
+#     name: ZAP web app scan
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: ZAP Scan
+#         uses: zaproxy/action-baseline@v0.4.0
+#         #uses: zaproxy/action-full-scan@v0.4.0
+#         with:
+#           token: ${{ secrets.GITHUB_TOKEN }}
+#           target: 'http://35.89.117.245:8081/'
+        
+
+## SSL SCAN   
+  monitor:
+    name: SSL/TLS Monitor
+    runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         domain:
+#           - http://35.89.117.245:8081/
+# #           - example.com
+    steps:
+#       - name: Monitor - ${{ matrix.domain }}
+      - name: Monitor 
+        uses: bluenovaio/action-tls-monitor@main
+        with:
+#           domain: ${{ matrix.domain }}
+          domain: http://35.89.117.245:8081/
+          expiration_days: 30
+          approved_protocols: TLSv1.2,TLSv1.3      
+
+## Trivy scan
+  Image_scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull docker image
+        run: docker pull sagikazarmark/dvwa
+
+      - uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: 'docker.io/sagikazarmark/dvwa:latest'
+          exit-code: '1'
+#           ignore-unfixed: true
+#           vuln-type: 'os,library'
+#           format: 'json'
+#           output: 'trivy-results.json'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif' 
+
+## Upload report to Dojo
+#   Upload_report: 
+#     name: Upload report to Dojo
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Clone code repository
+#       uses: actions/checkout@v2
+#     - name: Publish report
+#       id: import-scan
+#       uses: ivanamat/defectdojo-import-scan@v1
+#       with:
+#         token: 9279e3094b334f8001dbfe74464890e5347639cf
+#         defectdojo_url: http://52.12.246.238:8080/
+#         file: trivy-results.json
+#         scan_type: Trivy Scan
+#         engagement: 2
+#     - name: Show response
+#       run: |
+#         set -e
+#         printf '%s\n' '${{ steps.import-scan.outputs.response }}' 
+      
+      # Runs a single command using the runners shell
+      #- name: Run a one-line script
+       # run: echo Hello, world!
+
+      # Runs a set of commands using the runners shell
+      #- name: Run a multi-line script
+       # run: |
+        #  echo Add other actions to build,
+         # echo test, and deploy your project.
