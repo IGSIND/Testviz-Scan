@@ -1,26 +1,24 @@
-name: Qualys IAC Scan
-on:
- push:
- branches:
- - main
+name: Security-Tesing-Flow
+on: push
 jobs:
- Qualys_iac_scan:
- runs-on: ubuntu-latest
- name: Qualys IaC Scan
- steps:
- - name: Build image
- uses: docker build -t <name> .
- -name: Run docker Image
-uses: docker run <name>
- - name: Checkout
- uses: actions/checkout@v2
- with:
- fetch-depth: 0
+  deploy:
+    runs-on: ubuntu-latest
 
- - name: Qualys IAC scan action step
- uses: Qualys/github_action_qiac@main
- id: qiac
- env:
- URL: ${{ secrets.URL }}
- UNAME: ${{ secrets.USERNAME }}
- PASS: ${{ secrets.PASSWORD }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Checkout
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          # aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          # aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # aws-region: ${{ env.AWS_REGION }}
+          aws-secret-access-key: idTcN3fWSoeeEgJtTbRvIzodmflhgQPuRu4o3WBt
+          aws-region: ap-south-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      # - name: Build
+      #   id: build-image
+      #   run: |
+      #     docker build -t security-test
