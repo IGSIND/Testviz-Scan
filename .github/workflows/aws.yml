@@ -73,9 +73,9 @@ jobs:
         # Build a docker container and
         # push it to ECR so that it can
         # be deployed to ECS.
-        docker build -t vikram_security:VK .
+        docker build -t vikramnanda55/vikram_security:vk .
         docker push vikramnanda55/vikram_security:vk
-        echo "image=vikram_security:VK" >> $GITHUB_OUTPUT
+        echo "image=vikramnanda55/vikram_security:vk" >> $GITHUB_OUTPUT
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
