@@ -1,31 +1,43 @@
-name: Example workflow for Node using Snyk
-on: push
+name: Docker Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
 jobs:
-  security:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-      - name: Install Node.js, NPM and Yarn
-        uses: actions/setup-node@v1
-        with:
-          node-version: 16
-      - name: Cache dependencies
-        uses: actions/cache@v2
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-build-${{ env.cache-name }}
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-      - uses: actions/checkout@master
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/node@master
-        continue-on-error: true # To make sure that SARIF upload gets called
-        env:
-          SNYK_TOKEN: 36090293-880d-4831-a7bf-73e0f597cbd0
-        with:
-          args: --sarif-file-output=snyk.sarif
-      - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: snyk.sarif
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Build Docker Image
+      run: docker build -t your-docker-image-name:latest .
+
+    - name: Login to AWS ECR
+      run: |
+        aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_REGISTRY_URL }}
+
+    - name: Push Docker Image to AWS ECR
+      run: docker tag your-docker-image-name:latest ${{ secrets.AWS_REGISTRY_URL }}/your-docker-image-name:latest
+    - run: docker push ${{ secrets.AWS_REGISTRY_URL }}/your-docker-image-name:latest
+
+    - name: SSH into AWS EC2 Instance
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.AWS_EC2_HOST }}
+        username: ${{ secrets.AWS_EC2_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          docker pull ${{ secrets.AWS_REGISTRY_URL }}/your-docker-image-name:latest
+          docker run -d -p 80:80 ${{ secrets.AWS_REGISTRY_URL }}/your-docker-image-name:latest
+
+    - name: Run Synk to Check for Vulnerabilities
+      run: synk check
+
+    - name: Push Results to Synk
+      run: synk push
